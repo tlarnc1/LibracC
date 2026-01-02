@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibraCC採点・分析システム</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; }
+        .fade-in { animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #fff; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+        
+        input:checked + .check-indicator { background-color: transparent; border-color: transparent; position: relative; }
+        input:checked + .check-indicator::after { content: ''; position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); width: 8px; height: 4px; border-left: 2px solid white; border-bottom: 2px solid white; }
+    </style>
+</head>
+<body class="bg-white text-gray-900 min-h-screen flex flex-col tracking-tight">
+
+    <!-- Header -->
+    <header class="bg-black text-white sticky top-0 z-50 border-b border-gray-800">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex justify-between items-end">
+            <div>
+                <h1 class="text-xl font-bold tracking-wider leading-none">LibraCC</h1>
+                <p class="text-xs text-gray-400 mt-1 leading-none">採点・分析システム</p>
+            </div>
+            <div class="text-[10px] text-gray-500 uppercase tracking-widest">Institute of Academic TARAbit</div>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-4xl mx-auto w-full p-6 md:p-10">
+        
+        <!-- VIEW 1: Exam Selection -->
+        <div id="view-select" class="fade-in block max-w-3xl mx-auto pt-8">
+            <h2 class="text-2xl font-light mb-8 text-center text-gray-900">試験を選択</h2>
+            <div id="exam-list-container" class="grid gap-4">
+                <!-- Javascript will inject buttons here -->
+                <div class="text-center text-gray-400 py-10">Loading exams...</div>
+            </div>
+        </div>
+
+        <!-- VIEW 2: Input Form -->
+        <div id="view-input" class="hidden fade-in max-w-3xl mx-auto">
+            <button onclick="goBack('view-select')" class="text-sm text-gray-400 hover:text-black mb-6 flex items-center gap-2 transition-colors">
+                &larr; 選択画面に戻る
+            </button>
+            
+            <div class="bg-white border border-gray-200 p-8 shadow-sm">
+                <div class="border-b border-gray-100 pb-6 mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900" id="form-title">解答入力</h2>
+                    <p class="text-sm text-gray-500 mt-2 font-light">正解した問題にチェックを入れてください。</p>
+                </div>
+
+                <form id="score-form" class="space-y-10">
+                    <!-- Form will be generated here -->
+                </form>
+
+                <div class="pt-8">
+                    <button type="button" onclick="startAnalysis()" class="w-full bg-black hover:bg-gray-800 text-white font-medium py-4 tracking-widest transition-all active:scale-[0.99] border border-transparent shadow-lg">
+                        分析を実行する
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 3: Loading -->
+        <div id="view-loading" class="hidden flex flex-col items-center justify-center py-32">
+            <div class="w-full max-w-sm text-center">
+                <div class="relative w-16 h-16 mx-auto mb-8">
+                    <div class="absolute inset-0 border-2 border-gray-100 rounded-full"></div>
+                    <div class="absolute inset-0 border-2 border-black rounded-full border-t-transparent animate-spin"></div>
+                </div>
+                <h3 class="text-lg font-bold mb-2 text-gray-900 tracking-wider">ANALYZING</h3>
+                <p id="loading-text" class="text-gray-400 text-xs uppercase tracking-widest mb-8">Processing Data...</p>
+                <div class="w-full bg-gray-100 h-1 overflow-hidden"><div id="progress-bar" class="bg-black h-1 transition-all duration-200" style="width: 0%"></div></div>
+            </div>
+        </div>
+
+        <!-- VIEW 4: Result -->
+        <div id="view-result" class="hidden fade-in">
+            <button onclick="goBack('view-select')" class="text-sm text-gray-400 hover:text-black mb-6 flex items-center gap-2 transition-colors">
+                &larr; トップに戻る
+            </button>
+            <div class="grid md:grid-cols-12 gap-6">
+                <!-- Score -->
+                <div class="md:col-span-4 bg-black text-white p-8 flex flex-col justify-between shadow-lg">
+                    <div>
+                        <p class="text-xs opacity-50 uppercase tracking-widest mb-2">Total Score</p>
+                        <div class="text-7xl font-bold tracking-tighter" id="total-score-display">0<span class="text-2xl font-normal opacity-50 ml-1">/100</span></div>
+                    </div>
+                    <div class="mt-8">
+                        <div id="rank-badge" class="inline-block px-4 py-1.5 text-xs font-bold bg-white text-black tracking-widest">判定: 計算中...</div>
+                        <p class="text-xs text-gray-500 mt-4 leading-relaxed">今回のスコアに基づいた分析結果です。<br>右側の詳細データを確認してください。</p>
+                    </div>
+                </div>
+                <!-- Charts -->
+                <div class="md:col-span-8 bg-white border border-gray-200 shadow-sm p-6 md:p-8">
+                    <div class="mb-10">
+                        <h3 class="font-bold text-gray-900 mb-6 text-sm uppercase tracking-wider flex items-center gap-2"><span class="w-2 h-2 bg-blue-600 block"></span> 能力バランス診断</h3>
+                        <div class="relative w-full max-w-[400px] mx-auto aspect-square md:aspect-[16/9]"><canvas id="scoreChart"></canvas></div>
+                    </div>
+                    <hr class="border-gray-100 my-8">
+                    <div>
+                        <h3 class="font-bold text-gray-900 mb-6 text-sm uppercase tracking-wider flex items-center gap-2"><span class="w-2 h-2 bg-rose-500 block"></span> 分野別スコア & 対策</h3>
+                        <div id="category-bars" class="space-y-6 mb-8"></div>
+                        <div class="bg-gray-50 border border-gray-100 p-6">
+                            <h4 class="font-bold text-gray-900 text-xs uppercase tracking-widest mb-3">Priority Advice</h4>
+                            <div id="advice-container" class="text-sm text-gray-600 leading-relaxed space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-white border-t border-gray-100 py-8 mt-12 text-center text-[10px] text-gray-400 uppercase tracking-widest">
+        &copy; 2024 LibraCC Institute of Academic TARAbit.
+    </footer>
+
+    <script>
+        let currentExamData = null; // 現在読み込んでいる試験データ
+        let chartInstance = null;
+
+        // 1. 初期ロード時：試験リスト(JSON)を取得
+        window.onload = async function() {
+            try {
+                // キャッシュを防ぐためにタイムスタンプをつける場合: ?v=${new Date().getTime()}
+                const response = await fetch('./data/exams.json');
+                const exams = await response.json();
+                renderExamList(exams);
+            } catch (error) {
+                console.error("Failed to load exams list:", error);
+                document.getElementById('exam-list-container').innerHTML = '<div class="text-red-500 text-center">データの読み込みに失敗しました。</div>';
+            }
+        };
+
+        // 試験リストの描画
+        function renderExamList(exams) {
+            const container = document.getElementById('exam-list-container');
+            container.innerHTML = '';
+
+            exams.forEach(exam => {
+                const badge = exam.isNew ? '<span class="inline-block bg-black text-white text-[10px] px-2 py-0.5 mb-3 font-medium">NEW</span>' : '';
+                const html = `
+                    <button onclick="loadAndStartExam('${exam.id}')" class="group bg-white p-8 rounded-none border border-gray-200 hover:border-black transition-all duration-300 text-left flex items-center justify-between shadow-[0_2px_10px_-5px_rgba(0,0,0,0.1)] hover:shadow-[0_10px_20px_-10px_rgba(0,0,0,0.1)]">
+                        <div>
+                            ${badge}
+                            <h3 class="text-xl font-bold text-gray-900 mb-1 group-hover:underline decoration-1 underline-offset-4">${exam.title}</h3>
+                            <p class="text-gray-500 text-sm font-light">${exam.meta}</p>
+                        </div>
+                        <span class="text-2xl text-gray-300 font-light group-hover:text-black transition-colors">&rarr;</span>
+                    </button>
+                `;
+                container.insertAdjacentHTML('beforeend', html);
+            });
+        }
+
+        // 2. 試験選択時：個別の試験JSONを取得
+        async function loadAndStartExam(examId) {
+            try {
+                const response = await fetch(`./data/${examId}.json`);
+                currentExamData = await response.json();
+                renderExamForm(currentExamData);
+                switchView('view-select', 'view-input');
+            } catch (error) {
+                console.error("Failed to load exam details:", error);
+                alert("試験データの読み込みに失敗しました。");
+            }
+        }
+
+        // 入力フォームの描画
+        function renderExamForm(data) {
+            document.getElementById('form-title').innerText = `${data.title} - 解答入力`;
+            const form = document.getElementById('score-form');
+            form.innerHTML = '';
+
+            data.sections.forEach(section => {
+                const gridCols = Math.min(section.questions.length, 5);
+                let questionsHtml = '';
+                section.questions.forEach(q => {
+                    questionsHtml += `
+                        <label class="cursor-pointer border border-gray-200 p-3 text-center hover:bg-gray-50 transition-colors has-[:checked]:bg-gray-900 has-[:checked]:text-white has-[:checked]:border-black">
+                            <div class="text-xs mb-2 opacity-60">${q.label}</div>
+                            <input type="checkbox" data-cat="${section.id}" data-pts="${q.pts}" class="hidden">
+                            <div class="w-3 h-3 mx-auto border border-gray-300 rounded-full bg-white check-indicator"></div>
+                        </label>
+                    `;
+                });
+
+                form.insertAdjacentHTML('beforeend', `
+                    <div>
+                        <h3 class="font-bold text-gray-900 mb-4 text-sm uppercase tracking-wider border-l-4 border-black pl-3 py-1">
+                            ${section.title} <span class="text-gray-400 ml-2 font-normal normal-case">(${section.pointsLabel})</span>
+                        </h3>
+                        <div class="grid grid-cols-${gridCols} gap-3">${questionsHtml}</div>
+                    </div>
+                `);
+            });
+        }
+
+        // 分析開始
+        function startAnalysis() {
+            switchView('view-input', 'view-loading');
+            const progressBar = document.getElementById('progress-bar');
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 8;
+                if (progress > 100) progress = 100;
+                progressBar.style.width = `${progress}%`;
+                if (progress === 100) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        calculateResult();
+                        switchView('view-loading', 'view-result');
+                    }, 600);
+                }
+            }, 100);
+        }
+
+        // 結果計算
+        function calculateResult() {
+            const data = currentExamData;
+            const checkboxes = document.querySelectorAll('#score-form input[type="checkbox"]');
+            
+            let scores = {};
+            let totalMax = 0;
+            Object.keys(data.categories).forEach(key => {
+                scores[key] = 0;
+                totalMax += data.categories[key].max;
+            });
+
+            let totalScore = 0;
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    const cat = cb.dataset.cat;
+                    const pts = parseInt(cb.dataset.pts);
+                    if(scores[cat] !== undefined) {
+                        scores[cat] += pts;
+                        totalScore += pts;
+                    }
+                }
+            });
+
+            // 表示更新
+            document.getElementById('total-score-display').innerHTML = `${totalScore}<span class="text-2xl font-normal opacity-50 ml-1">/${totalMax}</span>`;
+            
+            // 判定ロジック
+            const rate = totalScore / totalMax;
+            const rankBadge = document.getElementById('rank-badge');
+            let rankClass = "bg-gray-200 text-gray-600";
+            let rankText = "E - Needs Improvement";
+            
+            if (rate >= 0.9) { rankClass = "bg-rose-500 text-white"; rankText = "S - Outstanding"; }
+            else if (rate >= 0.8) { rankClass = "bg-blue-600 text-white"; rankText = "A - Excellent"; }
+            else if (rate >= 0.6) { rankClass = "bg-black text-white"; rankText = "B - Good"; }
+            else if (rate >= 0.4) { rankClass = "bg-gray-400 text-white"; rankText = "C - Average"; }
+            
+            rankBadge.className = `inline-block px-4 py-1.5 text-xs font-bold tracking-widest ${rankClass}`;
+            rankBadge.innerText = rankText;
+
+            // バーチャート生成
+            const barsContainer = document.getElementById('category-bars');
+            barsContainer.innerHTML = '';
+            Object.keys(data.categories).forEach(key => {
+                const cat = data.categories[key];
+                const p = (scores[key] / cat.max) * 100;
+                const barColor = p >= 80 ? 'bg-blue-600' : (p >= 50 ? 'bg-black' : 'bg-rose-500');
+                barsContainer.insertAdjacentHTML('beforeend', `
+                    <div class="mb-4">
+                        <div class="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                            <span>${cat.name}</span>
+                            <span class="text-gray-900">${scores[key]} <span class="text-gray-300">/</span> ${cat.max}</span>
+                        </div>
+                        <div class="w-full bg-gray-100 h-1.5"><div class="${barColor} h-1.5 transition-all duration-1000" style="width: ${p}%"></div></div>
+                    </div>
+                `);
+            });
+
+            // アドバイス生成
+            const sortedCats = Object.keys(data.categories).sort((a,b) => (scores[a]/data.categories[a].max) - (scores[b]/data.categories[b].max));
+            const worstCat = sortedCats[0];
+            const adviceContainer = document.getElementById('advice-container');
+            if (scores[worstCat] / data.categories[worstCat].max === 1) {
+                adviceContainer.innerHTML = `<p class="font-medium text-black">完璧です。弱点が見当たりません。</p>`;
+            } else {
+                adviceContainer.innerHTML = `<p class="font-bold text-rose-500 mb-2">Focus: ${data.categories[worstCat].name}</p><p>${data.advice[worstCat]}</p>`;
+            }
+
+            // レーダーチャート
+            renderChart(Object.values(data.categories).map(c => c.name), Object.keys(data.categories).map(k => (scores[k]/data.categories[k].max)*100));
+        }
+
+        function renderChart(labels, data) {
+            const ctx = document.getElementById('scoreChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '達成率', data: data,
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)', borderColor: 'rgba(37, 99, 235, 1)',
+                        borderWidth: 1.5, pointBackgroundColor: 'rgba(37, 99, 235, 1)', pointBorderColor: '#fff', pointRadius: 3
+                    }]
+                },
+                options: {
+                    scales: { r: { angleLines: {color: 'rgba(0,0,0,0.05)'}, grid: {color: 'rgba(0,0,0,0.05)'}, pointLabels: {font:{size:10}, color:'#9ca3af'}, suggestedMin:0, suggestedMax:100, ticks:{display:false, stepSize:20} } },
+                    plugins: { legend: {display:false} },
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        function switchView(fromId, toId) {
+            document.getElementById(fromId).classList.add('hidden');
+            const toEl = document.getElementById(toId);
+            toEl.classList.remove('hidden');
+            toEl.classList.add('fade-in');
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+        function goBack(targetId) {
+            document.getElementById('view-result').classList.add('hidden');
+            document.getElementById('view-input').classList.add('hidden');
+            document.getElementById(targetId).classList.remove('hidden');
+            if(targetId === 'view-select') { document.getElementById('score-form').reset(); currentExamData = null; }
+        }
+    </script>
+</body>
+</html>
